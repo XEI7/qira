@@ -53,7 +53,7 @@ class Program:
     print "*** program is",self.program,"with hash",self.proghash
 
     # this is always initted, as it's the tag repo
-    self.static = static2.Static(self.program) 
+    self.static = static2.Static(self.program)
 
     # init static
     if qira_config.WITH_STATIC:
@@ -382,7 +382,7 @@ class Trace:
         self.flow = qira_analysis.get_instruction_flow(self, self.program, minclnum, maxclnum)
         self.dmap = qira_analysis.get_hacked_depth_map(self.flow, self.program)
         qira_analysis.analyse_calls(self.program, self.flow)
-        qira_analysis.validate_bil(self.program, self.flow)
+        #qira_analysis.validate_bil(self.program, self.flow)
 
         # hacky pin offset problem fix
         hpo = len(self.dmap)-(maxclnum-minclnum)
