@@ -385,7 +385,7 @@ def validate_bil(program, flow):
   for i in xrange(len(program.traces)):
     trace = program.traces[i]
     libraries = [(m[3],m[1]) for m in trace.mapped]
-    bil_vars = {"orig_offset":0} #TODO: this is wrong; likely a bug in ldr lifting
+    bil_vars = {}
     for (addr,data,clnum,ins) in flow:
       instr = program.static[addr]['instruction']
       if isinstance(instr, BapInsn):
