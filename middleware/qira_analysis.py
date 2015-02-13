@@ -8,6 +8,9 @@ import sys
 import struct
 sys.path.append(qira_config.BASEDIR+"/static2")
 import static2
+import concrete_execution
+from model import BapInsn
+from functools import partial
 
 def ghex(a):
   if a == None:
@@ -378,6 +381,69 @@ def analyse_calls(program,flow):
           func.abi = abi
         func.nargs = max(nargs,func.nargs)
 
+def validate_bil(program, flow):
+  trace = program.traces[0]
+  libraries = [(m[3],m[1]) for m in trace.mapped]
+  arm_registers = ["R0","R1","R2","R3","R4","R5","R6","R7",
+                 "R8","R9","R10","R11","R12","SP","LR","PC"]
+
+  def new_state_for_clnum(clnum):
+    initial_regs = trace.db.fetch_registers(clnum)
+    initial_vars = dict(zip(arm_registers, initial_regs))
+    initial_mem_get = partial(trace.fetch_raw_memory, clnum)
+    return concrete_execution.State(initial_vars, initial_mem_get)
+
+  state = new_state_for_clnum(0)
+
+  for (addr,data,clnum,ins) in flow:
+    instr = program.static[addr]['instruction']
+    if isinstance(instr, BapInsn):
+      bil_instrs = instr.insn.bil
+      if bil_instrs is None:
+        print "Error: no BIL for instruction %s" % str(instr)
+        # No BIL, so we have to update the state ourselves
+        state = new_state_for_clnum(clnum)
+      else:
+        # we have some BIL, let's validate (ARM specific)
+
+        oldpc = state["PC"]
+        state["PC"] += 8 #Qira PC is wrong
+        concrete_execution.execute_bil_statements(bil_instrs, state)
+        if state["PC"] == oldpc + 8:
+          state["PC"] -= 4
+
+        validate = True
+        PC = state["PC"]
+        for (base, size) in libraries:
+          if PC >= base and PC <= base+size or PC > 0xf0000000: #currently a hack
+            # we are jumping into a library that we can't trace.. reset the state and continue
+            state = new_state_for_clnum(clnum)
+            validate = False
+            break
+
+        if validate:
+          error = False
+          correct_regs = dict(zip(arm_registers, trace.db.fetch_registers(clnum)))
+
+          for reg, correct in correct_regs.iteritems():
+            if state[reg] != correct:
+              error = True
+              print "Error: %s was incorrect! (%x != %x). Fixing." % (reg, state[reg] , correct)
+              state[reg] = correct
+
+          for (addr, val) in state.memory.items():
+            realval = trace.fetch_raw_memory(clnum, addr, 1)
+            if val != realval:
+              error = True
+              print "Error: value at address %x is wrong! (%x != %x). Fixing." % (addr, ord(val), ord(realval))
+              state[addr] = realval
+
+          if error:
+            print "clnum was:", clnum
+            print "ASM was:", ins
+            print "BIL was:"
+            print "\n".join([str(b) for b in bil_instrs])
+            print "-"*50 +"\n"
 
 def display_call_args(instr,trace,clnum):
   program = trace.program
