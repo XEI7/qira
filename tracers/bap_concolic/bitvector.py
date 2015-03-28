@@ -221,7 +221,7 @@ class ConcreteBitVector(BitVector):
   """ Operations """
 
   def concat(self, other):
-    return ConcreteBitVector(self.size+other.size, (self.value << self.size) | other.value)
+    return ConcreteBitVector(self.size+other.size, (self.value << other.size) | other.value)
 
   """ Arithmetic operations """
 

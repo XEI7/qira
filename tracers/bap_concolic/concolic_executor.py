@@ -13,22 +13,32 @@ class Memory(dict):
     if initial is not None:
       self.update(initial)
 
+  @staticmethod
+  def _to_bitvec(bytelist):
+    length = len(bytelist)*8
+    value = ConcreteBitVector(0, 0)
+    for b in bytelist:
+      value = value.concat(b)
+    return value
+
   def get_mem(self, addr, size, little_endian=True):
     addr = int(addr)
-    result = "".join([self[address] for address in range(addr, addr+size)])
-    if little_endian: result = result[::-1]
-    return result
+    memresult = [self[address] for address in range(addr, addr+size)]
+    if little_endian: memresult = memresult[::-1]
+    return self._to_bitvec(memresult)
 
   def set_mem(self, addr, size, val, little_endian=True):
+    addr = int(addr)
     for i in range(size):
-      addr = int(addr)
       shift = i if little_endian else size-i-1
-      byteval = (val >> shift*8) & 0xff
-      self[addr+i] = chr(byteval)
+      byteval = ConcreteBitVector(8, int(val >> (shift*8)))
+      self[addr+i] = byteval
 
   def __getitem__(self, addr):
+    addr = int(addr)
     if addr not in self:
-      self[addr] = self.fetch_mem(addr, 1)
+      raw = ord(self.fetch_mem(addr, 1))
+      self[addr] = ConcreteBitVector(8, raw)
 
     return self.get(addr)
 
@@ -47,16 +57,14 @@ class State:
   def __getitem__(self, name):
     if isinstance(name, str):
       return self.variables[name]
-    elif isinstance(name, int):
-      return self.memory(name)
-    elif isinstance(name, ConcreteBitVector):
-      return self.memory(int(name))
+    else:
+      raise Exception("Cannot get key")
 
   def __setitem__(self, name, val):
     if isinstance(name, str):
       self.variables[name] = val
     else:
-      self.memory[int(name)] = val
+      raise Exception("Cannot store key")
 
   def __str__(self):
     return str(self.variables)
@@ -67,7 +75,12 @@ class VariableException(Exception):
 class MemoryException(Exception):
   pass
 
-class ConcreteExecutor(adt.Visitor):
+class ConcolicExecutor(adt.Visitor):
+  """
+  Concolic Executor
+  Takes an initial state, which may cotain both concrete and symbolic values
+  Also takes the name of the PC register, which is used for taking branches
+  """
   def __init__(self, state, pc):
     self.state = state
     self.pc = pc
@@ -75,10 +88,7 @@ class ConcreteExecutor(adt.Visitor):
 
   def visit_Load(self, op):
     addr = self.run(op.idx)
-    mem = self.state.get_mem(addr, op.size / 8, isinstance(op.endian, bil.LittleEndian))
-    if len(mem) == 0:
-      raise MemoryException(addr)
-    return ConcreteBitVector(op.size, int(mem.encode('hex'), 16))
+    return self.state.get_mem(addr, op.size / 8, isinstance(op.endian, bil.LittleEndian))
 
   def visit_Store(self, op):
     addr = self.run(op.idx)
@@ -227,7 +237,8 @@ class Error(Issue):
 
 def validate_bil(program, flow):
   r"""
-  Runs the concrete executor, validating the the results are consistent with the trace.
+  Runs the concolic executor with fully concrete values,
+  validating the the results are consistent with the trace.
   Returns a tuple of (Errors, Warnings)
   Currently only supports ARM, x86, and x86-64
   """
@@ -284,7 +295,7 @@ def validate_bil(program, flow):
         if arch == "arm":
           state[PC] += 8 #Qira PC is wrong
 
-        executor = ConcreteExecutor(state, PC)
+        executor = ConcolicExecutor(state, PC) # make a concolic exeuctor with fully concrete initial state
 
         try:
           adt.visit(executor, bil_instrs)
@@ -317,14 +328,16 @@ def validate_bil(program, flow):
             state[reg] = correct
 
         for (addr, val) in state.memory.items():
-          realval = trace.fetch_raw_memory(clnum, addr, 1)
-          if len(realval) == 0 or len(val) == 0:
+          try:
+            realval = ConcreteBitVector(8, ord(trace.fetch_raw_memory(clnum, addr, 1)))
+          except Exception as e:
             errors.append(Error(clnum, instr, "Used invalid address %x." % addr))
             # this is unfixable, reset state
             state = new_state_for_clnum(clnum)
-          elif val != realval:
+            continue
+          if val != realval:
             error = True
-            errors.append(Error(clnum, instr, "Value at address %x is wrong! (%x != %x)." % (addr, ord(val), ord(realval))))
-            state[addr] = realval
+            errors.append(Error(clnum, instr, "Value at address %x is wrong! (%x != %x)." % (addr, val, realval)))
+            state.set_mem(addr, 1, realval)
 
   return (errors, warnings)
