@@ -4,7 +4,7 @@ from bap import bil
 from bap import adt
 from functools import partial
 from model import BapInsn
-from bitvector import ConcreteBitVector
+from bitvector import ConcreteBitVector, SymbolicBitVector
 import collections
 
 class Memory(dict):
@@ -22,12 +22,14 @@ class Memory(dict):
     return value
 
   def get_mem(self, addr, size, little_endian=True):
+    # TODO: handle symbolic reads?
     addr = int(addr)
     memresult = [self[address] for address in range(addr, addr+size)]
     if little_endian: memresult = memresult[::-1]
     return self._to_bitvec(memresult)
 
   def set_mem(self, addr, size, val, little_endian=True):
+    # TODO: handle symbolic writes
     addr = int(addr)
     for i in range(size):
       shift = i if little_endian else size-i-1
@@ -120,7 +122,10 @@ class ConcolicExecutor(adt.Visitor):
     return ConcreteBitVector(1,0)
 
   def visit_Ite(self, op):
-    return self.run(op.true) if self.run(op.cond) else self.run(op.false)
+    cond = self.run(op.cond)
+    if isinstance(cond, SymbolicBitVector):
+      raise Exception("Symbolic conditional is not implemented")
+    return self.run(op.true) if cond == 1 else self.run(op.false)
 
   def visit_Extract(self, op):
     return self.run(op.expr).get_bits(op.low_bit, op.high_bit)
@@ -130,7 +135,16 @@ class ConcolicExecutor(adt.Visitor):
 
   def visit_Move(self, op):
     if isinstance(op.var.type, bil.Imm):
-      self.state[op.var.name] = ConcreteBitVector(op.var.type.size, int(self.run(op.expr)))
+      result = self.run(op.expr)
+      size = op.var.type.size
+      if isinstance(result, SymbolicBitVector):
+        result = SymbolicBitVector(size, result.expr)
+      elif isinstance(result, ConcreteBitVector):
+        result = ConcreteBitVector(size, int(result))
+      else:
+        raise Exception("Non-BitVector return result from {}".format(op.expr))
+
+      self.state[op.var.name] = result
     else:
       self.run(op.expr) # no need to store Mems
 
@@ -139,11 +153,19 @@ class ConcolicExecutor(adt.Visitor):
     self.state[self.pc] = self.run(op.arg)
 
   def visit_While(self, op):
-    while self.run(op.cond) == 1:
+    while True:
+      cond = self.run(op.cond)
+      if isinstance(result, SymbolicBitVector):
+        raise Exception("Symbolic conditional not not implemented")
+      if cond != 1:
+        break
       adt.visit(self, op.stmts)
 
   def visit_If(self, op):
-    if self.run(op.cond) == 1:
+    cond = self.run(op.cond)
+    if isinstance(cond, SymbolicBitVector):
+      raise Exception("Symbolic conditional not not implemented")
+    if cond == 1:
       adt.visit(self, op.true)
     else:
       adt.visit(self, op.false)
@@ -188,22 +210,46 @@ class ConcolicExecutor(adt.Visitor):
     return self.run(op.lhs) ^ self.run(op.rhs)
 
   def visit_EQ(self, op):
-    return ConcreteBitVector(1, 1 if self.run(op.lhs) == self.run(op.rhs) else 0)
+    lhs = self.run(op.lhs)
+    rhs = self.run(op.rhs)
+    if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
+      raise Exception("Symbolic comparison not implemented!")
+    return ConcreteBitVector(1, 1 if lhs == rhs else 0)
 
   def visit_NEQ(self, op):
-    return ConcreteBitVector(1, 1 if self.run(op.lhs) != self.run(op.rhs) else 0)
+    lhs = self.run(op.lhs)
+    rhs = self.run(op.rhs)
+    if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
+      raise Exception("Symbolic comparison not implemented!")
+    return ConcreteBitVector(1, 1 if lhs != rhs else 0)
 
   def visit_LT(self, op):
-    return ConcreteBitVector(1, 1 if self.run(op.lhs) < self.run(op.rhs) else 0)
+    lhs = self.run(op.lhs)
+    rhs = self.run(op.rhs)
+    if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
+      raise Exception("Symbolic comparison not implemented!")
+    return ConcreteBitVector(1, 1 if lhs < rhs else 0)
 
   def visit_LE(self, op):
-    return ConcreteBitVector(1, 1 if self.run(op.lhs) <= self.run(op.rhs) else 0)
+    lhs = self.run(op.lhs)
+    rhs = self.run(op.rhs)
+    if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
+      raise Exception("Symbolic comparison not implemented!")
+    return ConcreteBitVector(1, 1 if lhs <= rhs else 0)
 
   def visit_SLT(self, op):
-    return ConcreteBitVector(1, 1 if self.run(op.lhs).slt(self.run(op.rhs)) else 0)
+    lhs = self.run(op.lhs)
+    rhs = self.run(op.rhs)
+    if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
+      raise Exception("Symbolic comparison not implemented!")
+    return ConcreteBitVector(1, 1 if lhs < rhs else 0)
 
   def visit_SLE(self, op):
-    return ConcreteBitVector(1, 1 if self.run(op.lhs).sle(self.run(op.rhs)) else 0)
+    lhs = self.run(op.lhs)
+    rhs = self.run(op.rhs)
+    if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
+      raise Exception("Symbolic comparison not implemented!")
+    return ConcreteBitVector(1, 1 if lhs <= rhs else 0)
 
   def visit_NEG(self, op):
     return -self.run(op.arg)
@@ -212,10 +258,10 @@ class ConcolicExecutor(adt.Visitor):
     return ~self.run(op.arg)
 
   def visit_UNSIGNED(self, op):
-    return ConcreteBitVector(op.size, int(self.run(op.expr)))
+    return self.run(op.expr).resize(op.size)
 
   def visit_SIGNED(self, op):
-    return ConcreteBitVector(op.size, int(self.run(op.expr)))
+    return self.run(op.expr).resize(op.size)
 
   def visit_HIGH(self, op):
     return self.run(op.expr).get_high_bits(op.size)
