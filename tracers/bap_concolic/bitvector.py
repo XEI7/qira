@@ -24,6 +24,10 @@ class BitVector(object):
     return
 
   @abc.abstractmethod
+  def resize(self):
+    return
+
+  @abc.abstractmethod
   def signed(self):
     return
 
@@ -211,6 +215,9 @@ class ConcreteBitVector(BitVector):
   def get_size(self):
     return self.size
 
+  def resize(self, size):
+    return ConcreteBitVector(size, self.expr)
+
   def signed(self):
     mask = (1 << (self.get_size() - 1))
     if self.value & mask:
@@ -221,7 +228,10 @@ class ConcreteBitVector(BitVector):
   """ Operations """
 
   def concat(self, other):
-    return ConcreteBitVector(self.size+other.size, (self.value << other.size) | other.value)
+    if isinstance(other, SymbolicBitVector):
+      return SymbolicBitVector(self.size + other.size, (self.value << other.size) | other.expr)
+    else:
+      return ConcreteBitVector(self.size + other.size, (self.value << other.size) | other.value)
 
   """ Arithmetic operations """
 
@@ -232,7 +242,6 @@ class ConcreteBitVector(BitVector):
       size = max(self.size, other.size)
       value = self.value + other.value
     else:
-      print "A"
       size = self.size
       value = self.value + other
     return ConcreteBitVector(size, value)
@@ -450,10 +459,13 @@ class SymbolicBitVector(BitVector):
     length = high - low + 1
     bitmask = (1 << length) - 1
     value = self >> low
-    return SymbolicBitVector(length, int(value & bitmask))
+    return SymbolicBitVector(length, (value & bitmask).expr)
 
   def get_size(self):
     return self.size
+
+  def resize(self, size):
+    return SymbolicBitVector(size, self.expr)
 
   def signed(self):
     pass
@@ -461,7 +473,11 @@ class SymbolicBitVector(BitVector):
   """ Operations """
 
   def concat(self, other):
-    return SymbolicBitVector(self.size+other.size, (self.expr << other.size) | other.expr)
+    if isinstance(other, ConcreteBitVector):
+      others = other.value
+    else:
+      others = other.expr
+    return SymbolicBitVector(self.size + other.size, (self.expr << other.size) | others)
 
   def add(self, other):
     if isinstance(other, SymbolicBitVector):
@@ -592,7 +608,7 @@ class SymbolicBitVector(BitVector):
     return SymbolicBitVector(size, value)
 
   def arshift(self, other):
-    if isinstance(other, SybolicBitVector):
+    if isinstance(other, SymbolicBitVector):
       otherval = other.expr
     elif isinstance(other, ConcreteBitVector):
       otherval = other.value
@@ -677,6 +693,3 @@ class SymbolicBitVector(BitVector):
 
   def __repr__(self):
     return self.__str__()
-
-  def __int__(self):
-    return self.value
