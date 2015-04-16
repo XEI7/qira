@@ -451,22 +451,18 @@ class SymbolicBitVector(BitVector):
     super(SymbolicBitVector, self).__init__()
     self.size = size
     if isinstance(expr, ConcreteBitVector):
-      expr = int(expr)
-    self.expr = expr
-    bitmask = (1 << self.size) - 1
-    self.expr &= bitmask
+      expr = z3.BitVecVal(self.size, int(expr))
+    self.expr = z3.simplify(z3.BitVecSort(size).cast(expr))
 
   def get_bits(self, low, high):
     length = high - low + 1
-    bitmask = (1 << length) - 1
-    value = self >> low
-    return SymbolicBitVector(length, (value & bitmask).expr)
+    return SymbolicBitVector(length, z3.Extract(high, low, self.expr))
 
   def get_size(self):
     return self.size
 
   def resize(self, size):
-    return SymbolicBitVector(size, self.expr)
+    return SymbolicBitVector(size, z3.BitVecSort(size).cast(self.expr))
 
   def signed(self):
     return self

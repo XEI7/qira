@@ -5,6 +5,7 @@ from bap import adt
 from functools import partial
 from model import BapInsn
 from bitvector import ConcreteBitVector, SymbolicBitVector
+from copy import copy
 import collections
 import z3
 
@@ -14,6 +15,7 @@ def symbolic_conditional(cond):
 class Memory(dict):
   def __init__(self, fetch_mem, initial=None):
     self.fetch_mem = fetch_mem
+    self.constraints = []
     if initial is not None:
       self.update(initial)
 
@@ -75,6 +77,9 @@ class State:
   def __str__(self):
     return str(self.variables)
 
+  def get_copy(self):
+    return State(copy(self.variables), self.memory.get_mem, copy(dict(self.memory)))
+
 class VariableException(Exception):
   pass
 
@@ -87,9 +92,11 @@ class ConcolicExecutor(adt.Visitor):
   Takes an initial state, which may cotain both concrete and symbolic values
   Also takes the name of the PC register, which is used for taking branches
   """
-  def __init__(self, state, pc):
+  def __init__(self, state, pc, constraints=[]):
     self.state = state
     self.pc = pc
+    self.constraints = constraints
+    self.fork = None
     self.jumped = False
 
   def visit_Load(self, op):
@@ -159,20 +166,26 @@ class ConcolicExecutor(adt.Visitor):
   def visit_While(self, op):
     while True:
       cond = self.run(op.cond)
-      if isinstance(result, SymbolicBitVector):
-        raise Exception("Symbolic conditional not not implemented")
-      if cond != 1:
-        break
-      adt.visit(self, op.stmts)
+      if isinstance(cond, SymbolicBitVector):
+          raise Exception("Symbolic conditional not not implemented")
+      else:
+        if cond != 1:
+          break
+        adt.visit(self, op.stmts)
 
   def visit_If(self, op):
     cond = self.run(op.cond)
     if isinstance(cond, SymbolicBitVector):
-      raise Exception("Symbolic conditional not not implemented")
-    if cond == 1:
-      adt.visit(self, op.true)
-    else:
+      state_copy = self.state.get_copy()
+      self.fork = ConcolicExecutor(state_copy, self.pc, constraints=self.constraints + [cond == 1])
+      self.constraints.append(cond == 0)
+      adt.visit(self.fork, op.true)
       adt.visit(self, op.false)
+    else:
+      if cond == 1:
+        adt.visit(self, op.true)
+      else:
+        adt.visit(self, op.false)
 
   def visit_PLUS(self, op):
     return self.run(op.lhs) + self.run(op.rhs)
