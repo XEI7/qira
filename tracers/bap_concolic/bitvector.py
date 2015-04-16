@@ -1,4 +1,5 @@
 import abc
+import z3
 
 class BitVector(object):
   __metaclass__ = abc.ABCMeta
@@ -216,7 +217,7 @@ class ConcreteBitVector(BitVector):
     return self.size
 
   def resize(self, size):
-    return ConcreteBitVector(size, self.expr)
+    return ConcreteBitVector(size, self.value)
 
   def signed(self):
     mask = (1 << (self.get_size() - 1))
@@ -468,7 +469,7 @@ class SymbolicBitVector(BitVector):
     return SymbolicBitVector(size, self.expr)
 
   def signed(self):
-    pass
+    return self
 
   """ Operations """
 
@@ -477,7 +478,7 @@ class SymbolicBitVector(BitVector):
       others = other.value
     else:
       others = other.expr
-    return SymbolicBitVector(self.size + other.size, (self.expr << other.size) | others)
+    return SymbolicBitVector(self.size + other.size, z3.Concat(self.expr, other.expr))
 
   def add(self, other):
     if isinstance(other, SymbolicBitVector):
@@ -584,7 +585,7 @@ class SymbolicBitVector(BitVector):
     bitmask = (1 << self.size) - 1
     expr = self.expr ^ bitmask
     size = self.size
-    return SymbolicBitVector(size, value)
+    return SymbolicBitVector(size, expr)
 
   def lshift(self, other):
     size = self.size
@@ -628,49 +629,49 @@ class SymbolicBitVector(BitVector):
     if isinstance(other, SymbolicBitVector):
       return self.expr == other.expr
     elif isinstance(other, ConcreteBitVector):
-      return self.value == other.value
+      return self.expr == other.value
     else:
-      return self.value == other
+      return self.expr == other
 
   def neq(self, other):
     if isinstance(other, SymbolicBitVector):
       return self.expr != other.expr
     elif isinstance(other, ConcreteBitVector):
-      return self.value != other.value
+      return self.expr != other.value
     else:
-      return self.value != other
+      return self.expr != other
 
   def lt(self, other):
     if isinstance(other, SymbolicBitVector):
       return self.expr < other.expr
     elif isinstance(other, ConcreteBitVector):
-      return self.value < other.value
+      return self.expr < other.value
     else:
-      return self.value < other
+      return self.expr < other
 
   def le(self, other):
     if isinstance(other, SymbolicBitVector):
       return self.expr <= other.expr
     elif isinstance(other, ConcreteBitVector):
-      return self.value <= other.value
+      return self.expr <= other.value
     else:
-      return self.value <= other
+      return self.expr <= other
 
   def gt(self, other):
     if isinstance(other, SymbolicBitVector):
       return self.expr <= other.expr
     elif isinstance(other, ConcreteBitVector):
-      return self.value > other.value
+      return self.expr > other.value
     else:
-      return self.value > other
+      return self.expr > other
 
   def ge(self, other):
     if isinstance(other, SymbolicBitVector):
       return self.expr >= other.expr
     elif isinstance(other, ConcreteBitVector):
-      return self.value >= other.value
+      return self.expr >= other.value
     else:
-      return self.value >= other
+      return self.expr >= other
 
   def slt(self, other):
     if isinstance(other, SymbolicBitVector):

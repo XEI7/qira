@@ -6,6 +6,10 @@ from functools import partial
 from model import BapInsn
 from bitvector import ConcreteBitVector, SymbolicBitVector
 import collections
+import z3
+
+def symbolic_conditional(cond):
+  return z3.If(cond, z3.BitVecVal(1,8), z3.BitVecVal(0, 8))
 
 class Memory(dict):
   def __init__(self, fetch_mem, initial=None):
@@ -124,7 +128,7 @@ class ConcolicExecutor(adt.Visitor):
   def visit_Ite(self, op):
     cond = self.run(op.cond)
     if isinstance(cond, SymbolicBitVector):
-      raise Exception("Symbolic conditional is not implemented")
+      return symbolic_conditional(cond, self.run(op.true), self.run(op.false))
     return self.run(op.true) if cond == 1 else self.run(op.false)
 
   def visit_Extract(self, op):
@@ -213,42 +217,42 @@ class ConcolicExecutor(adt.Visitor):
     lhs = self.run(op.lhs)
     rhs = self.run(op.rhs)
     if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
-      raise Exception("Symbolic comparison not implemented!")
+      return SymbolicBitVector(1, symbolic_conditional(lhs == rhs))
     return ConcreteBitVector(1, 1 if lhs == rhs else 0)
 
   def visit_NEQ(self, op):
     lhs = self.run(op.lhs)
     rhs = self.run(op.rhs)
     if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
-      raise Exception("Symbolic comparison not implemented!")
+      return SymbolicBitVector(1, symbolic_conditional(lhs != rhs))
     return ConcreteBitVector(1, 1 if lhs != rhs else 0)
 
   def visit_LT(self, op):
     lhs = self.run(op.lhs)
     rhs = self.run(op.rhs)
     if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
-      raise Exception("Symbolic comparison not implemented!")
+      return SymbolicBitVector(1, symbolic_conditional(lhs < rhs))
     return ConcreteBitVector(1, 1 if lhs < rhs else 0)
 
   def visit_LE(self, op):
     lhs = self.run(op.lhs)
     rhs = self.run(op.rhs)
     if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
-      raise Exception("Symbolic comparison not implemented!")
+      return SymbolicBitVector(1, symbolic_conditional(lhs <= rhs))
     return ConcreteBitVector(1, 1 if lhs <= rhs else 0)
 
   def visit_SLT(self, op):
     lhs = self.run(op.lhs)
     rhs = self.run(op.rhs)
     if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
-      raise Exception("Symbolic comparison not implemented!")
+      return SymbolicBitVector(1, symbolic_conditional(lhs < rhs))
     return ConcreteBitVector(1, 1 if lhs < rhs else 0)
 
   def visit_SLE(self, op):
     lhs = self.run(op.lhs)
     rhs = self.run(op.rhs)
     if isinstance(lhs, SymbolicBitVector) or isinstance(rhs, SymbolicBitVector):
-      raise Exception("Symbolic comparison not implemented!")
+      return SymbolicBitVector(1, symbolic_conditional(lhs <= rhs))
     return ConcreteBitVector(1, 1 if lhs <= rhs else 0)
 
   def visit_NEG(self, op):
