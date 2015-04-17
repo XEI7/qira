@@ -437,27 +437,9 @@ def satisfy_constraints(program, start_clnum, symbolic_registers, symbolic_memor
 
   ################################ Below is experimental ################################
 
-  executor = executors[0]
+  executor = executors.pop(0)
   while True:
-    pc_value = int(executor.state[PC])
-    instr = program.static[pc_value]['instruction']
-    if not isinstance(instr, BapInsn):
-      return False, None
-      raise Exception("Could not make BAP instruction for %s at %x" % (str(instr), pc_value))
-    bil_instrs = instr.insn.bil
-
-    for bil_ins in bil_instrs:
-      executor.run(bil_ins)
-      if executor.fork != None:
-        executors.append(executors.fork)
-        executors.fork = None
-        print "Forked"
-
-    if not executor.jumped:
-      executor.state[PC] += instr.size()
-
     s = z3.Solver()
-
     for key, value in user_constraints.items():
       s.add(executor.state[key] == value)
 
@@ -466,3 +448,29 @@ def satisfy_constraints(program, start_clnum, symbolic_registers, symbolic_memor
 
     if s.check().r == 1:
       return True, s.model()
+
+    pc_value = int(executor.state[PC])
+    instr = program.static[pc_value]['instruction']
+    if not isinstance(instr, BapInsn): # is this always the right way to stop?
+      print "switching fork"
+      try:
+        executor = executors.pop(0)
+        continue
+      except IndexError as e:
+        print "No forks left => UNSAT"
+        return False, None
+    bil_instrs = instr.insn.bil
+    print instr
+
+    for bil_ins in bil_instrs:
+      executor.run(bil_ins)
+      if executor.fork != None:
+        executors.append(executor.fork)
+        executor.fork = None
+        print "Forked"
+
+    if not executor.jumped:
+      executor.state[PC] += instr.size()
+    else:
+      executor.jumped = False
+
