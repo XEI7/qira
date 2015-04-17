@@ -404,3 +404,65 @@ def validate_bil(program, flow):
             state.set_mem(addr, 1, realval)
 
   return (errors, warnings)
+
+def satisfy_constraints(program, start_clnum, symbolic_registers, symbolic_memory, user_constraints):
+  """
+  Runs the concolic executor from a starting clnum, attempting to satisfy the contraints list.
+  Uses concrete values for everything but the specified registers and memory addresses.
+  """
+  trace = program.traces[0]
+  registers = program.tregs[0]
+  regsize = 8 * program.tregs[1]
+  PC = registers[-1]
+
+  initial_mem_get = partial(trace.fetch_raw_memory, start_clnum)
+  initial_regs = dict(zip(registers, map(lambda x: ConcreteBitVector(regsize, x), trace.db.fetch_registers(start_clnum))))
+
+  # add symbolic registers
+  for register in symbolic_registers:
+    rs = [SymbolicBitVector(8, z3.BitVec(register+str(i), 8)) for i in range(regsize / 8)]
+    r = rs[0]
+    for rp in rs[1:]:
+      r = r.concat(rp)
+    initial_regs[register] = r
+
+  # add symbolic memory
+  initial_mem = {}
+  for address in symbolic_memory:
+    b = z3.BitVec("mem_{}".format(hex(address)), 8)
+    initial_mem[address] = b
+
+  start_state = State(initial_regs, initial_mem_get, initial_mem)
+  executors = [ConcolicExecutor(start_state, PC)]
+
+  ################################ Below is experimental ################################
+
+  executor = executors[0]
+  while True:
+    pc_value = int(executor.state[PC])
+    instr = program.static[pc_value]['instruction']
+    if not isinstance(instr, BapInsn):
+      return False, None
+      raise Exception("Could not make BAP instruction for %s at %x" % (str(instr), pc_value))
+    bil_instrs = instr.insn.bil
+
+    for bil_ins in bil_instrs:
+      executor.run(bil_ins)
+      if executor.fork != None:
+        executors.append(executors.fork)
+        executors.fork = None
+        print "Forked"
+
+    if not executor.jumped:
+      executor.state[PC] += instr.size()
+
+    s = z3.Solver()
+
+    for key, value in user_constraints.items():
+      s.add(executor.state[key] == value)
+
+    for constraint in executor.constraints:
+      s.add(constraint)
+
+    if s.check().r == 1:
+      return True, s.model()
