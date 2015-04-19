@@ -1,5 +1,9 @@
-{"start":4,
+{
+ "start":4,
  "regs": ["EAX", "ECX"],
   "mem": [],
-  "constraints": {"EAX":0x1337b33f, "EIP":0x804806e}
+  "constraints": {
+    "registers": {"ECX": 0xc0deface, "EIP":0x8048084},
+    "memory": {"8049093": (4, 0x1337b33f)}
+  }
 }

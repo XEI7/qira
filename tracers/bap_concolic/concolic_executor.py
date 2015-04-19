@@ -22,9 +22,10 @@ class Memory(dict):
   @staticmethod
   def _to_bitvec(bytelist):
     length = len(bytelist)*8
-    value = ConcreteBitVector(0, 0)
-    for b in bytelist:
+    value = bytelist[0]
+    for b in bytelist[1:]:
       value = value.concat(b)
+    print value
     return value
 
   def get_mem(self, addr, size, little_endian=True):
@@ -39,7 +40,10 @@ class Memory(dict):
     addr = int(addr)
     for i in range(size):
       shift = i if little_endian else size-i-1
-      byteval = ConcreteBitVector(8, int(val >> (shift*8)))
+      if isinstance(val, ConcreteBitVector):
+        byteval = ConcreteBitVector(8, int(val >> (shift*8)))
+      if isinstance(val, SymbolicBitVector):
+        byteval = SymbolicBitVector(8, z3.Extract((shift+1)*8-1, shift*8, val.expr))
       self[addr+i] = byteval
 
   def __getitem__(self, addr):
@@ -440,8 +444,12 @@ def satisfy_constraints(program, start_clnum, symbolic_registers, symbolic_memor
   executor = executors.pop(0)
   while True:
     s = z3.Solver()
-    for key, value in user_constraints.items():
+    for key, value in user_constraints['registers'].items():
       s.add(executor.state[key] == value)
+
+    for key, (size, value) in user_constraints['memory'].items():
+      print "getting address %s" % key
+      s.add(executor.state.get_mem(int(key, 16), size) == value)
 
     for constraint in executor.constraints:
       s.add(constraint)
@@ -460,7 +468,6 @@ def satisfy_constraints(program, start_clnum, symbolic_registers, symbolic_memor
         print "No forks left => UNSAT"
         return False, None
     bil_instrs = instr.insn.bil
-    print instr
 
     for bil_ins in bil_instrs:
       executor.run(bil_ins)

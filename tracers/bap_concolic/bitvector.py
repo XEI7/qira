@@ -230,7 +230,7 @@ class ConcreteBitVector(BitVector):
 
   def concat(self, other):
     if isinstance(other, SymbolicBitVector):
-      return SymbolicBitVector(self.size + other.size, (self.value << other.size) | other.expr)
+      return SymbolicBitVector(self.size + other.size, z3.BitVecVal(self.value, self.size).concat(other.expr))
     else:
       return ConcreteBitVector(self.size + other.size, (self.value << other.size) | other.value)
 
@@ -445,6 +445,14 @@ class ConcreteBitVector(BitVector):
   def __int__(self):
     return self.value
 
+def z3ExprCast(size, expr):
+  if size > expr.size():
+    return z3.Concat(z3.BitVecVal(0, size-expr.size()), expr)
+  elif size == expr.size():
+    return expr
+  else:
+    return z3.Extract(size, 0, expr)
+
 class SymbolicBitVector(BitVector):
 
   def __init__(self, size, expr):
@@ -452,7 +460,7 @@ class SymbolicBitVector(BitVector):
     self.size = size
     if isinstance(expr, ConcreteBitVector):
       expr = z3.BitVecVal(self.size, int(expr))
-    self.expr = z3.simplify(z3.BitVecSort(size).cast(expr))
+    self.expr = z3.simplify(z3ExprCast(size, expr))
 
   def get_bits(self, low, high):
     length = high - low + 1
@@ -462,7 +470,7 @@ class SymbolicBitVector(BitVector):
     return self.size
 
   def resize(self, size):
-    return SymbolicBitVector(size, z3.BitVecSort(size).cast(self.expr))
+    return SymbolicBitVector(size, self.expr)
 
   def signed(self):
     return self
@@ -471,10 +479,10 @@ class SymbolicBitVector(BitVector):
 
   def concat(self, other):
     if isinstance(other, ConcreteBitVector):
-      others = other.value
+      others = z3.BitVecVal(other.size, other.value)
     else:
       others = other.expr
-    return SymbolicBitVector(self.size + other.size, z3.Concat(self.expr, other.expr))
+    return SymbolicBitVector(self.size + other.size, z3.Concat(self.expr, others))
 
   def add(self, other):
     if isinstance(other, SymbolicBitVector):
